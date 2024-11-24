@@ -20,7 +20,6 @@ cred_dict = json.loads(firebase_credentials)
 cred = credentials.Certificate(cred_dict)
 initialize_app(cred, {"databaseURL": "https://silsilah-keluarga-10d90-default-rtdb.firebaseio.com/"})
 
-
 def load_data():
     """Memuat data keluarga dari Firebase."""
     ref = db.reference("family")
@@ -64,24 +63,112 @@ def calculate_relationship(family, member_id):
     return relationships
 
 def generate_family_tree(family):
-    """Menghasilkan URL PNG untuk silsilah keluarga menggunakan layanan eksternal."""
-    dot_data = "digraph G {\n"
+    """Menghasilkan URL PNG untuk silsilah keluarga dengan gaya tambahan menggunakan QuickChart."""
+
+    # Definisi warna dengan skema yang mencerminkan hierarki generasi
+    colors = {
+        'background': '#ffffff',
+        'grandparent_fill': '#FFE0B2',    # Orange muda untuk kakek/nenek
+        'grandparent_border': '#FB8C00',   # Orange tua untuk border kakek/nenek
+        'parent_fill': '#C8E6C9',          # Hijau muda untuk orang tua
+        'parent_border': '#43A047',        # Hijau tua untuk border orang tua
+        'self_fill': '#E3F2FD',           # Biru muda untuk diri sendiri
+        'self_border': '#1E88E5',         # Biru tua untuk border diri sendiri
+        'sibling_fill': '#F3E5F5',        # Ungu muda untuk saudara
+        'sibling_border': '#8E24AA',      # Ungu tua untuk border saudara
+        'cousin_fill': '#FFCDD2',         # Merah muda untuk sepupu
+        'cousin_border': '#E53935',       # Merah tua untuk border sepupu
+        'edge': '#546E7A',                # Abu-abu gelap untuk garis penghubung
+        'text': '#37474F'                 # Abu-abu sangat gelap untuk teks
+    }
     
-    # Tambahkan node
+    # Awal struktur Graphviz dengan gaya yang ditingkatkan
+    dot_data = f"""
+    digraph G {{
+        // Pengaturan Global
+        bgcolor="{colors['background']}"
+        rankdir=TB
+        splines=ortho
+        nodesep=0.8
+        ranksep=1.0
+        
+        // Gaya Default Node
+        node [
+            fontname="Arial"
+            fontsize=11
+            shape=rectangle
+            style="rounded,filled"
+            penwidth=2.0
+            margin="0.3,0.2"
+            height=0.6
+            fontcolor="{colors['text']}"
+        ]
+        
+        // Gaya Default Edge
+        edge [
+            color="{colors['edge']}"
+            penwidth=1.5
+            arrowsize=0.8
+            arrowhead=normal
+            fontname="Arial"
+            fontsize=9
+            fontcolor="{colors['edge']}"
+        ]
+        
+        // Pengaturan Rank
+        rankdir=TB
+        ranksep=0.8
+    """
+    
+    # Fungsi untuk menentukan warna berdasarkan peran anggota keluarga
+    def get_member_colors(anggota):
+        anggota = anggota.lower()
+        if anggota in ["kakek", "nenek"]:
+            return colors['grandparent_fill'], colors['grandparent_border']
+        elif anggota in ["bapak", "ibu", "paman", "bibi"]:
+            return colors['parent_fill'], colors['parent_border']
+        elif anggota == "saya":
+            return colors['self_fill'], colors['self_border']
+        elif anggota in ["adik", "kakak"]:
+            return colors['sibling_fill'], colors['sibling_border']
+        elif anggota == "sepupu":
+            return colors['cousin_fill'], colors['cousin_border']
+        else:
+            return colors['sibling_fill'], colors['sibling_border']
+    
+    # Tambahkan node dengan gaya yang ditingkatkan
     for member in family:
         label = f'{member["name"]}\\n({member.get("anggota", "")})'
-        dot_data += f'{member["id"]} [label="{label}"];\n'
-
-    # Tambahkan edge
+        fill_color, border_color = get_member_colors(member.get("anggota", ""))
+        
+        dot_data += f'''
+        {member["id"]} [
+            label="{label}"
+            fillcolor="{fill_color}"
+            color="{border_color}"
+            shape={"rectangle"}
+        ]
+        '''
+    
+    # Tambahkan edge dengan label yang dipercantik
     for member in family:
         if member.get("parent1_id"):
-            dot_data += f'{member["parent1_id"]} -> {member["id"]};\n'
+            dot_data += f'{member["parent1_id"]} -> {member["id"]} [label=" ", dir=forward, minlen=2]\n'
         if member.get("parent2_id"):
-            dot_data += f'{member["parent2_id"]} -> {member["id"]};\n'
-
-    dot_data += "}\n"
-
-    # Kirimkan ke API QuickChart
+            dot_data += f'{member["parent2_id"]} -> {member["id"]} [label=" ", dir=forward, minlen=2]\n'
+    
+    # Tambahkan pengaturan penataan tambahan
+    dot_data += """
+        // Pengaturan Layout Tambahan
+        graph [
+            pad="0.5",
+            nodesep="0.5",
+            ranksep="0.7"
+        ]
+    }
+    """
+    
+    # Kirim ke API QuickChart
     response = requests.post(
         "https://quickchart.io/graphviz",
         json={"format": "png", "graph": dot_data}
@@ -90,7 +177,7 @@ def generate_family_tree(family):
     if response.status_code == 200:
         # Simpan file PNG secara lokal
         temp_dir = tempfile.mkdtemp()
-        output_path = os.path.join(temp_dir, "family_tree.png")
+        output_path = os.path.join(temp_dir, "styled_family_tree.png")
         with open(output_path, "wb") as f:
             f.write(response.content)
         return output_path
