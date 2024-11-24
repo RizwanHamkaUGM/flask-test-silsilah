@@ -63,8 +63,7 @@ def calculate_relationship(family, member_id):
     return relationships
 
 def generate_family_tree(family):
-    """Menghasilkan silsilah keluarga dalam format PNG menggunakan pydot."""
-    # Buat graph menggunakan pydot
+    """Menghasilkan file .dot untuk silsilah keluarga."""
     graph = pydot.Dot(graph_type="digraph", rankdir="TB")
 
     # Tambahkan node untuk setiap anggota keluarga
@@ -79,10 +78,10 @@ def generate_family_tree(family):
         if "parent2_id" in member and member["parent2_id"]:
             graph.add_edge(pydot.Edge(str(member["parent2_id"]), str(member["id"])))
 
-    # Simpan graph ke file PNG di directory temporary
+    # Simpan ke file .dot di directory temporary
     temp_dir = tempfile.mkdtemp()
-    output_path = os.path.join(temp_dir, f"family_tree_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-    graph.write_png(output_path)
+    output_path = os.path.join(temp_dir, f"family_tree_{datetime.now().strftime('%Y%m%d_%H%M%S')}.dot")
+    graph.write_raw(output_path)
 
     return output_path
 
@@ -136,30 +135,19 @@ def describe_relationship(member_id):
 
 @app.route("/family/tree", methods=["GET"])
 def family_tree():
-    """Endpoint untuk menghasilkan dan mengirim file PNG silsilah keluarga."""
+    """Endpoint untuk menghasilkan dan mengirim file .dot silsilah keluarga."""
     try:
         data = load_data()["family"]
-        image_path = generate_family_tree(data)
+        dot_path = generate_family_tree(data)
         
-        # Kirim file dan set callback untuk menghapus file setelah terkirim
         return send_file(
-            image_path,
-            mimetype="image/png",
+            dot_path,
+            mimetype="text/vnd.graphviz",
             as_attachment=True,
-            download_name="family_tree.png"
+            download_name="family_tree.dot"
         )
-        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-        
-    finally:
-        # Cleanup: hapus file temporary jika masih ada
-        try:
-            if 'image_path' in locals() and os.path.exists(image_path):
-                os.remove(image_path)
-                os.rmdir(os.path.dirname(image_path))
-        except Exception as e:
-            print(f"Error during cleanup: {str(e)}")
 
 @app.route("/family/<int:member_id>", methods=["PUT"])
 def update_family_member(member_id):
