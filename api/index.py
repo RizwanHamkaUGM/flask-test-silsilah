@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_file
 import pydot
+import requests
 import os
 from firebase_admin import credentials, initialize_app, db
 from flask_cors import CORS
@@ -63,27 +64,38 @@ def calculate_relationship(family, member_id):
     return relationships
 
 def generate_family_tree(family):
-    """Menghasilkan file .dot untuk silsilah keluarga."""
-    graph = pydot.Dot(graph_type="digraph", rankdir="TB")
-
-    # Tambahkan node untuk setiap anggota keluarga
+    """Menghasilkan URL PNG untuk silsilah keluarga menggunakan layanan eksternal."""
+    dot_data = "digraph G {\n"
+    
+    # Tambahkan node
     for member in family:
-        node_label = f'{member["name"]}\n({member.get("anggota", "")})'
-        graph.add_node(pydot.Node(str(member["id"]), label=node_label, shape="box"))
+        label = f'{member["name"]}\\n({member.get("anggota", "")})'
+        dot_data += f'{member["id"]} [label="{label}"];\n'
 
-    # Tambahkan edge untuk hubungan orang tua-anak
+    # Tambahkan edge
     for member in family:
-        if "parent1_id" in member and member["parent1_id"]:
-            graph.add_edge(pydot.Edge(str(member["parent1_id"]), str(member["id"])))
-        if "parent2_id" in member and member["parent2_id"]:
-            graph.add_edge(pydot.Edge(str(member["parent2_id"]), str(member["id"])))
+        if member.get("parent1_id"):
+            dot_data += f'{member["parent1_id"]} -> {member["id"]};\n'
+        if member.get("parent2_id"):
+            dot_data += f'{member["parent2_id"]} -> {member["id"]};\n'
 
-    # Simpan ke file .dot di directory temporary
-    temp_dir = tempfile.mkdtemp()
-    output_path = os.path.join(temp_dir, f"family_tree_{datetime.now().strftime('%Y%m%d_%H%M%S')}.dot")
-    graph.write_raw(output_path)
+    dot_data += "}\n"
 
-    return output_path
+    # Kirimkan ke API QuickChart
+    response = requests.post(
+        "https://quickchart.io/graphviz",
+        json={"format": "png", "graph": dot_data}
+    )
+    
+    if response.status_code == 200:
+        # Simpan file PNG secara lokal
+        temp_dir = tempfile.mkdtemp()
+        output_path = os.path.join(temp_dir, "family_tree.png")
+        with open(output_path, "wb") as f:
+            f.write(response.content)
+        return output_path
+    else:
+        raise Exception(f"Error generating image: {response.text}")
 
 @app.route("/family", methods=["GET"])
 def get_family():
@@ -135,16 +147,20 @@ def describe_relationship(member_id):
 
 @app.route("/family/tree", methods=["GET"])
 def family_tree():
-    """Endpoint untuk menghasilkan dan mengirim file .dot silsilah keluarga."""
+    """Endpoint untuk menghasilkan dan mengirim file .png silsilah keluarga."""
     try:
+        # Ambil data keluarga dari Firebase
         data = load_data()["family"]
-        dot_path = generate_family_tree(data)
+
+        # Hasilkan file PNG menggunakan QuickChart API
+        png_path = generate_family_tree(data)
         
+        # Kirim file PNG sebagai respon
         return send_file(
-            dot_path,
-            mimetype="text/vnd.graphviz",
+            png_path,
+            mimetype="image/png",
             as_attachment=True,
-            download_name="family_tree.dot"
+            download_name="family_tree.png"
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
