@@ -2,4 +2,12 @@
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }
   ]
+  "build": {
+    "env": {
+      "PATH": "/usr/bin:/bin:/usr/local/bin"
+    },
+    "commands": [
+      "apt-get update && apt-get install -y graphviz"
+    ]
+  }
 }
