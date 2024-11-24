@@ -1,5 +1,4 @@
 Flask
 firebase-admin
-flask-cors
-graphviz
-python-dotenv
+Flask-Cors
+pydot
