@@ -10,6 +10,9 @@ import json
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+# Gunakan temporary directory untuk file static
+STATIC_FOLDER = tempfile.gettempdir()
+
 firebase_credentials = os.getenv('FIREBASE_CREDENTIALS')
 cred_dict = json.loads(firebase_credentials)
 
