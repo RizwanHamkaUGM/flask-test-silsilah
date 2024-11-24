@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, send_file
-from graphviz import Digraph
+import pydot
 import os
 from firebase_admin import credentials, initialize_app, db
 from flask_cors import CORS
@@ -63,48 +63,28 @@ def calculate_relationship(family, member_id):
     return relationships
 
 def generate_family_tree(family):
-    """Menghasilkan silsilah keluarga dalam format PNG menggunakan Graphviz dengan temporary directory."""
-    # Buat temporary directory
-    temp_dir = tempfile.mkdtemp()
-    
-    # Buat instance Digraph dengan directory temporary
-    graph = Digraph(format="png")
-    graph.attr(rankdir="TB")
+    """Menghasilkan silsilah keluarga dalam format PNG menggunakan pydot."""
+    # Buat graph menggunakan pydot
+    graph = pydot.Dot(graph_type="digraph", rankdir="TB")
 
     # Tambahkan node untuk setiap anggota keluarga
     for member in family:
-        graph.node(
-            str(member["id"]),
-            label=f'{member["name"]}\n({member.get("anggota", "")})',
-            shape="box",
-        )
+        node_label = f'{member["name"]}\n({member.get("anggota", "")})'
+        graph.add_node(pydot.Node(str(member["id"]), label=node_label, shape="box"))
 
     # Tambahkan edge untuk hubungan orang tua-anak
     for member in family:
         if "parent1_id" in member and member["parent1_id"]:
-            graph.edge(str(member["parent1_id"]), str(member["id"]))
+            graph.add_edge(pydot.Edge(str(member["parent1_id"]), str(member["id"])))
         if "parent2_id" in member and member["parent2_id"]:
-            graph.edge(str(member["parent2_id"]), str(member["id"]))
+            graph.add_edge(pydot.Edge(str(member["parent2_id"]), str(member["id"])))
 
-    # Buat nama file unik dengan timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = os.path.join(temp_dir, f"family_tree_{timestamp}")
-    
-    try:
-        # Render graph ke file temporary
-        graph.render(output_path, format="png", cleanup=True)
-        
-        # Path lengkap ke file PNG yang dihasilkan
-        full_path = f"{output_path}.png"
-        
-        if not os.path.exists(full_path):
-            raise FileNotFoundError(f"File not found: {full_path}")
-        
-        return full_path
-        
-    except Exception as e:
-        print(f"Error generating family tree: {str(e)}")
-        raise
+    # Simpan graph ke file PNG di directory temporary
+    temp_dir = tempfile.mkdtemp()
+    output_path = os.path.join(temp_dir, f"family_tree_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+    graph.write_png(output_path)
+
+    return output_path
 
 @app.route("/family", methods=["GET"])
 def get_family():
